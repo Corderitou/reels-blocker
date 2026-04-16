@@ -34,59 +34,113 @@ class ReelsBlockerService : AccessibilityService() {
         if (now - lastBlockTime < COOLDOWN_MS) return
 
         when (pkg) {
-            "com.instagram.android" -> checkAndBlock(event, "Reels", instagram = true)
-            "com.google.android.youtube" -> checkAndBlock(event, "Shorts", instagram = false)
+            "com.instagram.android" -> handleInstagram(event)
+            "com.google.android.youtube" -> handleYouTube(event)
         }
     }
 
-    private fun checkAndBlock(event: AccessibilityEvent, keyword: String, instagram: Boolean) {
-        val className = event.className?.toString() ?: ""
-        if (className.contains(keyword, ignoreCase = true)) {
-            block(instagram)
-            return
-        }
+    private fun handleInstagram(event: AccessibilityEvent) {
+        val prefs = getSharedPreferences(MainActivity.PREFS_NAME, MODE_PRIVATE)
+        val blockReels   = prefs.getBoolean(MainActivity.KEY_BLOCK_REELS, true)
+        val blockStories = prefs.getBoolean(MainActivity.KEY_BLOCK_STORIES, false)
+        val blockHome    = prefs.getBoolean(MainActivity.KEY_BLOCK_HOME, false)
 
+        if (!blockReels && !blockStories && !blockHome) return
+
+        val className = event.className?.toString() ?: ""
+        val root = rootInActiveWindow
+
+        try {
+            if (blockReels) {
+                if (className.contains("Reels", ignoreCase = true)) {
+                    blockInstagram("Reels bloqueado"); return
+                }
+                if (root != null && hasSelectedNavTab(root, "Reels")) {
+                    blockInstagram("Reels bloqueado"); return
+                }
+            }
+
+            if (blockStories && root != null) {
+                if (className.contains("Story", ignoreCase = true) ||
+                    hasNodeWithDesc(root, "story", depth = 0)
+                ) {
+                    blockInstagram("Historia bloqueada"); return
+                }
+            }
+
+            if (blockHome && root != null) {
+                if (hasSelectedNavTab(root, "Home") || hasSelectedNavTab(root, "Inicio")) {
+                    blockInstagram("Feed bloqueado"); return
+                }
+            }
+        } finally {
+            root?.recycle()
+        }
+    }
+
+    private fun handleYouTube(event: AccessibilityEvent) {
+        val prefs = getSharedPreferences(MainActivity.PREFS_NAME, MODE_PRIVATE)
+        if (!prefs.getBoolean(MainActivity.KEY_BLOCK_SHORTS, true)) return
+
+        val className = event.className?.toString() ?: ""
+        if (className.contains("Shorts", ignoreCase = true)) {
+            blockYouTube(); return
+        }
         val root = rootInActiveWindow ?: return
         try {
-            if (hasSelectedNode(root, keyword, depth = 0)) {
-                block(instagram)
-            }
+            if (hasSelectedNavTab(root, "Shorts")) blockYouTube()
         } finally {
             root.recycle()
         }
     }
 
-    private fun hasSelectedNode(node: AccessibilityNodeInfo, keyword: String, depth: Int): Boolean {
+    private fun hasSelectedNavTab(node: AccessibilityNodeInfo, keyword: String, depth: Int = 0): Boolean {
         if (depth > 10) return false
-
         val text = node.text?.toString() ?: ""
         val desc = node.contentDescription?.toString() ?: ""
-        val matchesKeyword = text.equals(keyword, ignoreCase = true) ||
+        val matches = text.equals(keyword, ignoreCase = true) ||
                 desc.contains(keyword, ignoreCase = true)
-
-        if (matchesKeyword && (node.isSelected || node.isChecked)) return true
-
+        if (matches && (node.isSelected || node.isChecked)) return true
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val found = hasSelectedNode(child, keyword, depth + 1)
+            val found = hasSelectedNavTab(child, keyword, depth + 1)
             child.recycle()
             if (found) return true
         }
         return false
     }
 
-    private fun block(instagram: Boolean) {
-        lastBlockTime = System.currentTimeMillis()
-        if (instagram) {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("instagram://direct/inbox"))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-        } else {
-            performGlobalAction(GLOBAL_ACTION_HOME)
+    private fun hasNodeWithDesc(node: AccessibilityNodeInfo, keyword: String, depth: Int): Boolean {
+        if (depth > 8) return false
+        val desc = node.contentDescription?.toString() ?: ""
+        if (desc.contains(keyword, ignoreCase = true)) return true
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = hasNodeWithDesc(child, keyword, depth + 1)
+            child.recycle()
+            if (found) return true
         }
+        return false
+    }
+
+    private fun blockInstagram(msg: String) {
+        lastBlockTime = System.currentTimeMillis()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("instagram://direct/inbox"))
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
         Handler(Looper.getMainLooper()).post {
-            val msg = if (instagram) "→ Mensajes de Instagram" else "YouTube Shorts bloqueado"
             Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun blockYouTube() {
+        lastBlockTime = System.currentTimeMillis()
+        val intent = packageManager.getLaunchIntentForPackage("com.google.android.youtube")
+            ?: return
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        startActivity(intent)
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(applicationContext, "YouTube Shorts bloqueado", Toast.LENGTH_SHORT).show()
         }
     }
 
