@@ -1,6 +1,8 @@
 package com.focusmode.reelsblocker
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -32,24 +34,22 @@ class ReelsBlockerService : AccessibilityService() {
         if (now - lastBlockTime < COOLDOWN_MS) return
 
         when (pkg) {
-            "com.instagram.android" -> checkAndBlock(event, "Reels", "Instagram Reels bloqueado")
-            "com.google.android.youtube" -> checkAndBlock(event, "Shorts", "YouTube Shorts bloqueado")
+            "com.instagram.android" -> checkAndBlock(event, "Reels", instagram = true)
+            "com.google.android.youtube" -> checkAndBlock(event, "Shorts", instagram = false)
         }
     }
 
-    private fun checkAndBlock(event: AccessibilityEvent, keyword: String, message: String) {
-        // Check activity/fragment class name first (fast path)
+    private fun checkAndBlock(event: AccessibilityEvent, keyword: String, instagram: Boolean) {
         val className = event.className?.toString() ?: ""
         if (className.contains(keyword, ignoreCase = true)) {
-            block(message)
+            block(instagram)
             return
         }
 
-        // Scan accessibility tree for a selected nav tab with the keyword
         val root = rootInActiveWindow ?: return
         try {
             if (hasSelectedNode(root, keyword, depth = 0)) {
-                block(message)
+                block(instagram)
             }
         } finally {
             root.recycle()
@@ -75,11 +75,18 @@ class ReelsBlockerService : AccessibilityService() {
         return false
     }
 
-    private fun block(message: String) {
+    private fun block(instagram: Boolean) {
         lastBlockTime = System.currentTimeMillis()
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        if (instagram) {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("instagram://direct/inbox"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } else {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(applicationContext, message, Toast.LENGTH_SHORT).show()
+            val msg = if (instagram) "→ Mensajes de Instagram" else "YouTube Shorts bloqueado"
+            Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
