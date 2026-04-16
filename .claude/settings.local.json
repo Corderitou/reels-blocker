@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sL \"https://github.com/gradle/gradle/raw/v8.4.0/gradle/wrapper/gradle-wrapper.jar\" -o /home/pp/reels/gradle/wrapper/gradle-wrapper.jar)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh repo *)"
+    ]
+  }
+}

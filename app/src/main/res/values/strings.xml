@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Bloqueador de Reels</string>
+    <string name="accessibility_service_label">Bloqueador de Reels</string>
+    <string name="accessibility_service_description">Detecta cuando abres Reels de Instagram o YouTube Shorts y regresa automáticamente al inicio para evitar distracciones.</string>
+</resources>
