@@ -26,12 +26,31 @@ class ReelsBlockerService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val pkg = event.packageName?.toString() ?: return
 
+        val now = System.currentTimeMillis()
+        if (now - lastBlockTime < COOLDOWN_MS) return
+
+        // Catch nav tab clicks early, before the screen loads
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val desc = event.contentDescription?.toString() ?: ""
+            if (pkg == "com.instagram.android") {
+                val prefs = getSharedPreferences(MainActivity.PREFS_NAME, MODE_PRIVATE)
+                if (prefs.getBoolean(MainActivity.KEY_BLOCK_REELS, true) &&
+                    desc.contains("Reels", ignoreCase = true)) {
+                    blockInstagram("Reels bloqueado"); return
+                }
+            } else if (pkg == "com.google.android.youtube") {
+                val prefs = getSharedPreferences(MainActivity.PREFS_NAME, MODE_PRIVATE)
+                if (prefs.getBoolean(MainActivity.KEY_BLOCK_SHORTS, true) &&
+                    desc.contains("Shorts", ignoreCase = true)) {
+                    blockYouTube(); return
+                }
+            }
+            return
+        }
+
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         ) return
-
-        val now = System.currentTimeMillis()
-        if (now - lastBlockTime < COOLDOWN_MS) return
 
         when (pkg) {
             "com.instagram.android" -> handleInstagram(event)
@@ -125,6 +144,7 @@ class ReelsBlockerService : AccessibilityService() {
 
     private fun blockInstagram(msg: String) {
         lastBlockTime = System.currentTimeMillis()
+        performGlobalAction(GLOBAL_ACTION_BACK)
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("instagram://direct/inbox"))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
